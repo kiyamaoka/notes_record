@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>notes_record</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+    }
+    h1, h2 {
+      margin: 8px 0;
+    }
+    .panel {
+      background: #fff;
+      padding: 12px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    input, textarea, select, button {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      padding: 10px;
+      font-size: 14px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #1976d2;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #555;
+    }
+    button.danger {
+      background: #c62828;
+    }
+    button.voice {
+      background: #6a1b9a;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .mini-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .mini-row input {
+      margin: 0;
+    }
+    .mini-row button {
+      width: auto;
+      margin: 0;
+      padding: 8px 12px;
+      white-space: nowrap;
+    }
+    .time {
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .button-row button {
+      width: auto;
+      min-width: 140px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      font-size: 12px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 6px;
+      vertical-align: top;
+    }
+    th {
+      background: #eee;
+    }
+    td input {
+      margin: 0;
+      padding: 6px;
+      font-size: 12px;
+    }
+    .small {
+      font-size: 12px;
+      color: #555;
+    }
+    @media (max-width: 900px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+      .mini-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .mini-row button,
+      .button-row button {
+        width: 100%;
+      }
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>走行記録メモ</h1>
+  <div class="time" id="currentTime"></div>
+
+  <div class="panel">
+    <h2>即時記録</h2>
+
+    <label>周回番号</label>
+    <input id="lap" type="number" min="1" step="1" placeholder="例: 13" />
+
+    <label>区間</label>
+    <select id="section"></select>
+
+    <label>イベント</label>
+    <select id="event"></select>
+
+    <label>補足メモ</label>
+    <textarea id="memo" rows="2" placeholder="あとから修正できます"></textarea>
+
+    <label>場所</label>
+    <input id="location" type="text" placeholder="あとから修正できます" />
+
+    <div class="button-row">
+      <button type="button" onclick="saveQuickRecord()">時刻だけ記録</button>
+      <button type="button" onclick="saveFullRecord()">入力内容つきで記録</button>
+      <button type="button" onclick="incrementLap()">周回 +1</button>
+    </div>
+
+    <div class="button-row">
+      <button type="button" class="voice" onclick="startVoiceInput('event')">音声→イベント</button>
+      <button type="button" class="voice" onclick="startVoiceInput('memo')">音声→メモ</button>
+      <button type="button" class="voice" onclick="startVoiceInput('location')">音声→場所</button>
+    </div>
+
+    <div class="small" id="voiceStatus">音声入力: 未使用</div>
+  </div>
+
+  <div class="panel">
+    <h2>設定: 区間</h2>
+    <div class="mini-row">
+      <input id="newSection" type="text" placeholder="区間名を追加" />
+      <button type="button" onclick="addSection()">追加</button>
+    </div>
+    <div id="sectionList"></div>
+  </div>
+
+  <div class="panel">
+    <h2>設定: イベント</h2>
+    <div class="mini-row">
+      <input id="newEvent" type="text" placeholder="イベント名を追加" />
+      <button type="button" onclick="addEvent()">追加</button>
+    </div>
+    <div id="eventList"></div>
+  </div>
+
+  <div class="panel">
+    <h2>操作</h2>
+    <div class="button-row">
+      <button class="secondary" type="button" onclick="exportCSV()">CSV出力</button>
+      <button class="danger" type="button" onclick="clearRecords()">記録全削除</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>記録一覧（直接編集できます）</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>周回</th>
+          <th>区間</th>
+          <th>時刻</th>
+          <th>イベント</th>
+          <th>メモ</th>
+          <th>場所</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="recordTable"></tbody>
+    </table>
+  </div>
+
+  <script>
+    let sections = JSON.parse(
+      localStorage.getItem("memo_sections_editable") ||
+      '["未選択","都庁前→新宿西口ロータリー","新宿西口ロータリー→都庁前","天空橋方面","帰路","休憩・その他"]'
+    );
+
+    let events = JSON.parse(
+      localStorage.getItem("memo_events_editable") ||
+      '["未入力","出発","走行開始","到着","天空橋到着","天空橋出発","路上駐車回避","路駐車回避","路駐等回避","ルート復帰","小休憩開始","小休憩終了","自転車飛び出し","他車両のカットイン","動的な地図が～のMRM","バイクすり抜け","譲られたので譲った","地図が来ず待機","再接続","前方に別バス到着で減速"]'
+    );
+
+    let records = JSON.parse(localStorage.getItem("memo_records_editable") || "[]");
+
+    function updateClock() {
+      document.getElementById("currentTime").textContent =
+        "現在時刻: " + formatDate(new Date());
+    }
+
+    function formatDate(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      const h = String(date.getHours()).padStart(2, "0");
+      const mi = String(date.getMinutes()).padStart(2, "0");
+      const s = String(date.getSeconds()).padStart(2, "0");
+      return `${y}-${m}-${d} ${h}:${mi}:${s}`;
+    }
+
+    function renderSections() {
+      const select = document.getElementById("section");
+      const list = document.getElementById("sectionList");
+      select.innerHTML = "";
+      list.innerHTML = "";
+
+      sections.forEach((name, index) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+
+        const row = document.createElement("div");
+        row.className = "mini-row";
+
+        const input = document.createElement("input");
+        input.value = name;
+        input.onchange = function () {
+          updateSection(index, this.value);
+        };
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "danger";
+        button.textContent = "削除";
+        button.onclick = function () {
+          deleteSection(index);
+        };
+
+        row.appendChild(input);
+        row.appendChild(button);
+        list.appendChild(row);
+      });
+    }
+
+    function renderEvents() {
+      const select = document.getElementById("event");
+      const list = document.getElementById("eventList");
+      select.innerHTML = "";
+      list.innerHTML = "";
+
+      events.forEach((name, index) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+
+        const row = document.createElement("div");
+        row.className = "mini-row";
+
+        const input = document.createElement("input");
+        input.value = name;
+        input.onchange = function () {
+          updateEvent(index, this.value);
+        };
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "danger";
+        button.textContent = "削除";
+        button.onclick = function () {
+          deleteEvent(index);
+        };
+
+        row.appendChild(input);
+        row.appendChild(button);
+        list.appendChild(row);
+      });
+    }
+
+    function renderRecords() {
+      const tbody = document.getElementById("recordTable");
+      tbody.innerHTML = "";
+
+      records.forEach((r, index) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><input type="number" min="1" step="1" value="${escapeAttr(r.lap)}" onchange="updateRecordField(${index}, 'lap', this.value)" /></td>
+          <td><input type="text" value="${escapeAttr(r.section)}" onchange="updateRecordField(${index}, 'section', this.value)" /></td>
+          <td><input type="text" value="${escapeAttr(r.timestamp)}" onchange="updateRecordField(${index}, 'timestamp', this.value)" /></td>
+          <td><input type="text" value="${escapeAttr(r.event)}" onchange="updateRecordField(${index}, 'event', this.value)" /></td>
+          <td><input type="text" value="${escapeAttr(r.memo || '')}" onchange="updateRecordField(${index}, 'memo', this.value)" /></td>
+          <td><input type="text" value="${escapeAttr(r.location || '')}" onchange="updateRecordField(${index}, 'location', this.value)" /></td>
+          <td><button type="button" class="danger" onclick="deleteRecord(${index})">削除</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function addSection() {
+      const input = document.getElementById("newSection");
+      const value = input.value.trim();
+      if (!value) return;
+      sections.push(value);
+      saveSections();
+      renderSections();
+      input.value = "";
+    }
+
+    function addEvent() {
+      const input = document.getElementById("newEvent");
+      const value = input.value.trim();
+      if (!value) return;
+      events.push(value);
+      saveEvents();
+      renderEvents();
+      input.value = "";
+    }
+
+    function updateSection(index, value) {
+      sections[index] = value.trim() || "名称未設定";
+      saveSections();
+      renderSections();
+    }
+
+    function updateEvent(index, value) {
+      events[index] = value.trim() || "名称未設定";
+      saveEvents();
+      renderEvents();
+    }
+
+    function deleteSection(index) {
+      sections.splice(index, 1);
+      saveSections();
+      renderSections();
+    }
+
+    function deleteEvent(index) {
+      events.splice(index, 1);
+      saveEvents();
+      renderEvents();
+    }
+
+    function saveSections() {
+      localStorage.setItem("memo_sections_editable", JSON.stringify(sections));
+    }
+
+    function saveEvents() {
+      localStorage.setItem("memo_events_editable", JSON.stringify(events));
+    }
+
+    function saveRecords() {
+      localStorage.setItem("memo_records_editable", JSON.stringify(records));
+    }
+
+    function saveQuickRecord() {
+      const lapValue = document.getElementById("lap").value.trim();
+      if (!lapValue) {
+        alert("周回番号を入力してください。");
+        return;
+      }
+
+      const lap = Number(lapValue);
+      if (!Number.isInteger(lap) || lap <= 0) {
+        alert("周回番号は1以上の整数で入力してください。");
+        return;
+      }
+
+      const record = {
+        lap: lap,
+        section: "",
+        timestamp: formatDate(new Date()),
+        event: "",
+        memo: "",
+        location: ""
+      };
+
+      records.push(record);
+      saveRecords();
+      renderRecords();
+    }
+
+    function saveFullRecord() {
+      const lapValue = document.getElementById("lap").value.trim();
+      const section = document.getElementById("section").value;
+      const event = document.getElementById("event").value;
+      const memo = document.getElementById("memo").value.trim();
+      const location = document.getElementById("location").value.trim();
+
+      if (!lapValue) {
+        alert("周回番号を入力してください。");
+        return;
+      }
+
+      const lap = Number(lapValue);
+      if (!Number.isInteger(lap) || lap <= 0) {
+        alert("周回番号は1以上の整数で入力してください。");
+        return;
+      }
+
+      const record = {
+        lap: lap,
+        section: section,
+        timestamp: formatDate(new Date()),
+        event: event,
+        memo: memo,
+        location: location
+      };
+
+      records.push(record);
+      saveRecords();
+      renderRecords();
+
+      document.getElementById("memo").value = "";
+      document.getElementById("location").value = "";
+    }
+
+    function updateRecordField(index, field, value) {
+      if (field === "lap") {
+        if (value === "") {
+          records[index][field] = "";
+        } else {
+          const lap = Number(value);
+          if (!Number.isInteger(lap) || lap <= 0) return;
+          records[index][field] = lap;
+        }
+      } else {
+        records[index][field] = value;
+      }
+      saveRecords();
+    }
+
+    function deleteRecord(index) {
+      records.splice(index, 1);
+      saveRecords();
+      renderRecords();
+    }
+
+    function incrementLap() {
+      const lapInput = document.getElementById("lap");
+      const current = Number(lapInput.value || 0);
+      lapInput.value = current > 0 ? current + 1 : 1;
+    }
+
+    function exportCSV() {
+      if (records.length === 0) {
+        alert("出力する記録がありません。");
+        return;
+      }
+
+      const header = ["lap", "section", "timestamp", "event", "memo", "location"];
+      const rows = records.map(r => [
+        r.lap,
+        r.section,
+        r.timestamp,
+        r.event,
+        r.memo,
+        r.location
+      ]);
+
+      const csv = [header, ...rows]
+        .map(row => row.map(csvEscape).join(","))
+        .join("\n");
+
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "driving_memo_records.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function clearRecords() {
+      if (!confirm("記録を全削除しますか？")) return;
+      records = [];
+      saveRecords();
+      renderRecords();
+    }
+
+    function startVoiceInput(targetId) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const status = document.getElementById("voiceStatus");
+
+      if (!SpeechRecognition) {
+        status.textContent = "音声入力: このブラウザは未対応です";
+        alert("このブラウザでは音声入力が使えません。Chrome系ブラウザをお試しください。");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = "ja-JP";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      status.textContent = "音声入力: 聞き取り中...";
+
+      recognition.onresult = function(event) {
+        const text = event.results[0][0].transcript;
+        const el = document.getElementById(targetId);
+
+        if (el.tagName === "SELECT") {
+          events.push(text);
+          saveEvents();
+          renderEvents();
+          document.getElementById("event").value = text;
+        } else {
+          el.value = el.value ? (el.value + " " + text) : text;
+        }
+
+        status.textContent = "音声入力: 入力完了";
+      };
+
+      recognition.onerror = function() {
+        status.textContent = "音声入力: エラー";
+      };
+
+      recognition.onend = function() {
+        if (status.textContent === "音声入力: 聞き取り中...") {
+          status.textContent = "音声入力: 終了";
+        }
+      };
+
+      recognition.start();
+    }
+
+    function csvEscape(value) {
+      const str = String(value ?? "");
+      if (str.includes('"') || str.includes(",") || str.includes("\n")) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function escapeAttr(str) {
+      return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    updateClock();
+    setInterval(updateClock, 1000);
+    renderSections();
+    renderEvents();
+    renderRecords();
+  </script>
+</body>
+</html>
