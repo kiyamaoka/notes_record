@@ -233,6 +233,7 @@
     function renderSections() {
       const select = document.getElementById("section");
       const list = document.getElementById("sectionList");
+      const currentValue = select.value;
       select.innerHTML = "";
       list.innerHTML = "";
 
@@ -263,11 +264,18 @@
         row.appendChild(button);
         list.appendChild(row);
       });
+
+      if (sections.includes(currentValue)) {
+        select.value = currentValue;
+      } else if (sections.length > 0) {
+        select.value = sections[0];
+      }
     }
 
     function renderEvents() {
       const select = document.getElementById("event");
       const list = document.getElementById("eventList");
+      const currentValue = select.value;
       select.innerHTML = "";
       list.innerHTML = "";
 
@@ -298,6 +306,12 @@
         row.appendChild(button);
         list.appendChild(row);
       });
+
+      if (events.includes(currentValue)) {
+        select.value = currentValue;
+      } else if (events.length > 0) {
+        select.value = events[0];
+      }
     }
 
     function renderRecords() {
@@ -340,27 +354,71 @@
     }
 
     function updateSection(index, value) {
-      sections[index] = value.trim() || "名称未設定";
+      const oldName = sections[index];
+      const newName = value.trim() || "名称未設定";
+
+      sections[index] = newName;
+
+      records.forEach(record => {
+        if (record.section === oldName) {
+          record.section = newName;
+        }
+      });
+
       saveSections();
+      saveRecords();
       renderSections();
+      renderRecords();
     }
 
     function updateEvent(index, value) {
-      events[index] = value.trim() || "名称未設定";
+      const oldName = events[index];
+      const newName = value.trim() || "名称未設定";
+
+      events[index] = newName;
+
+      records.forEach(record => {
+        if (record.event === oldName) {
+          record.event = newName;
+        }
+      });
+
       saveEvents();
+      saveRecords();
       renderEvents();
+      renderRecords();
     }
 
     function deleteSection(index) {
+      const deletedName = sections[index];
       sections.splice(index, 1);
+
+      records.forEach(record => {
+        if (record.section === deletedName) {
+          record.section = "";
+        }
+      });
+
       saveSections();
+      saveRecords();
       renderSections();
+      renderRecords();
     }
 
     function deleteEvent(index) {
+      const deletedName = events[index];
       events.splice(index, 1);
+
+      records.forEach(record => {
+        if (record.event === deletedName) {
+          record.event = "";
+        }
+      });
+
       saveEvents();
+      saveRecords();
       renderEvents();
+      renderRecords();
     }
 
     function saveSections() {
